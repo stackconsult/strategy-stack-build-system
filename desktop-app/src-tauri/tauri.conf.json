@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
@@ -27,8 +27,14 @@
       "capabilities": [
         {
           "identifier": "default",
-          "windows": ["*"],
-          "permissions": ["core:default", "opener:default", "updater:default"]
+          "windows": [
+            "*"
+          ],
+          "permissions": [
+            "core:default",
+            "opener:default",
+            "updater:default"
+          ]
         }
       ]
     }
