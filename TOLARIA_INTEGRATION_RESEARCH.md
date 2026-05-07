@@ -11,6 +11,7 @@ This document outlines how the 19-Agent Build System integrates with Tolaria, St
 ### What Exists Now
 
 **19-Agent Build System (Built in /opt/agents):**
+
 - 18 agents (PO_AGENT_v1 through TL_AGENT_v5)
 - 45 gates across 6 phases
 - PostgreSQL governance_db for state persistence
@@ -19,13 +20,23 @@ This document outlines how the 19-Agent Build System integrates with Tolaria, St
 - Orchestrator (port 8008)
 - Web dashboard (port 8081) - basic implementation
 - Tolaria shell (command-line interface)
+- **Location:** `/opt/agents` on Mac (can be run from USB or GitHub)
 
 **Tolaria (External Desktop Application):**
+
 - Tauri-based desktop app (Rust + React + TypeScript)
 - Markdown vault management
 - Git-first architecture
 - Files-first storage
 - AI agent integration support
+- **Vault Location:** Configurable (Mac, USB, or any path)
+
+**Deployment Architecture:**
+
+- **USB Drive (Store and Go):** Stores all source files
+- **Mac:** Runs the system from USB or local copy
+- **GitHub:** Public repo for anyone to clone and run
+- **Tolaria Vault:** Can be anywhere (Mac, USB, separate drive)
 
 ---
 
@@ -34,9 +45,11 @@ This document outlines how the 19-Agent Build System integrates with Tolaria, St
 ### 4 Connection Points (Per Specifications)
 
 #### CONNECTION POINT 1: Build Initiation
+
 **Tolaria → Build System**
 
 Tolaria UI triggers new builds via API:
+
 ```
 POST /api/builds/start
 {
@@ -49,15 +62,18 @@ POST /api/builds/start
 ```
 
 **Implementation Required:**
+
 - Add Tauri command in Tolaria: `start_build(payload)`
 - Add HTTP client in Tolaria Rust backend
 - Add UI button/form in Tolaria React frontend
 - Build system API endpoint exists at `/api/builds/start`
 
 #### CONNECTION POINT 2: Governance Visibility
+
 **Build System → Tolaria**
 
 Tolaria reads `/builds/[BUILD_ID]/state.json` every 30 seconds:
+
 ```json
 {
   "build_id": "[uuid]",
@@ -73,15 +89,18 @@ Tolaria reads `/builds/[BUILD_ID]/state.json` every 30 seconds:
 ```
 
 **Implementation Required:**
+
 - ORCHESTRATOR_AGENT must write state.json to Tolaria vault path
 - Tolaria must watch state.json for changes (fs watcher)
 - Tolaria UI must display: current phase, active agents, blockers, gates
 - Health status: GREEN/YELLOW/RED based on blockers
 
 #### CONNECTION POINT 3: Documentation Sync
+
 **Build System → Tolaria**
 
 On every PHASE_CLOSE, TL_AGENT writes:
+
 ```
 /builds/[BUILD_ID]/docs/phase-reports/phase-[N]-closure.md
 ```
@@ -89,14 +108,17 @@ On every PHASE_CLOSE, TL_AGENT writes:
 Tolaria surfaces these as project journal entries.
 
 **Implementation Required:**
+
 - TL_AGENT_vN must write phase reports to Tolaria vault path
 - Tolaria must index phase reports in its search
 - Tolaria must display phase reports in chronological order
 
 #### CONNECTION POINT 4: Build Archive
+
 **Build System → Tolaria**
 
 On BUILD_COMPLETE, TL_AGENT_v5 writes:
+
 ```
 /builds/[BUILD_ID]/archived/
   ├── BUILD-CERTIFICATE.md
@@ -110,6 +132,7 @@ On BUILD_COMPLETE, TL_AGENT_v5 writes:
 Tolaria ingests as completed project record.
 
 **Implementation Required:**
+
 - TL_AGENT_v5 must write archive to Tolaria vault
 - Tolaria must create project record linking to archive
 - Tolaria must make archive searchable and linkable
@@ -201,11 +224,13 @@ async fn start_new_build(config: BuildConfig) -> Result<String, String> {
 
 **Option B: Tolaria Fork/PR**
 Contribute Build System support directly to Tolaria codebase:
+
 - Add "Build Projects" section to Tolaria UI
 - Add build monitoring sidebar/panel
 - Add build initiation command
 
 **Implementation Steps:**
+
 1. Set up Tolaria development environment
 2. Create Build System plugin architecture
 3. Add Build System panel to UI
@@ -221,9 +246,25 @@ Contribute Build System support directly to Tolaria codebase:
 
 **Deliverable:** Bidirectional file sync between systems
 
-1. **Tolaria vault structure for builds:**
+**Architecture Constraint:**
+
+- Build system runs from: USB drive, Mac, or GitHub clone (location-agnostic)
+- Tolaria vault can be: Mac, USB, separate drive (configurable)
+- Integration must work regardless of source/destination locations
+
+1. **Configuration (Environment Variables):**
+
+   ```bash
+   # Build System Config
+   BUILD_SYSTEM_ROOT=/path/to/agents  # Auto-detected if not set
+   TOLARIA_VAULT_PATH=/path/to/tolaria/vault  # Required
+   BUILD_OUTPUT_DIR=/path/to/builds  # Default: ./builds
    ```
-   /TOLARIA_VAULT/
+
+2. **Tolaria vault structure for builds:**
+
+   ```
+   [TOLARIA_VAULT_PATH]/
      ├── builds/
      │   ├── [BUILD_ID]/
      │   │   ├── state.json          ← Written by ORCHESTRATOR
@@ -236,14 +277,50 @@ Contribute Build System support directly to Tolaria codebase:
              └── builds/             ← Symlinks to active builds
    ```
 
-2. **File watchers:**
-   - Tolaria watches state.json for real-time updates
-   - Build system watches for PRD changes
-   - Both use native OS file watching
+3. **Path Resolution Strategy:**
 
-3. **Configuration:**
-   - `BUILD_SYSTEM_VAULT_PATH` env var
-   - Tolaria settings panel for build system URL
+   ```python
+   # In orchestrator and agents
+   import os
+   from pathlib import Path
+
+   def get_tolaria_vault_path():
+       """Get Tolaria vault path from env or prompt user"""
+       path = os.getenv('TOLARIA_VAULT_PATH')
+       if not path:
+           # Check common locations
+           for candidate in [
+               Path.home() / 'tolaria-vault',
+               Path.home() / 'Documents' / 'tolaria',
+               Path.home() / 'vault',
+               '/Volumes/STORE N GO/tolaria-vault',  # USB
+           ]:
+               if candidate.exists():
+                   path = str(candidate)
+                   break
+       return path
+   ```
+
+4. **File watchers:**
+   - Tolaria watches state.json for changes (via native OS watcher)
+   - Build system writes to configured path (no watching needed)
+   - Both use absolute paths to avoid confusion
+
+5. **Deployment Configuration:**
+
+   ```bash
+   # When running from USB
+   export BUILD_SYSTEM_ROOT="/Volumes/STORE N GO/agents"
+   export TOLARIA_VAULT_PATH="/Volumes/STORE N GO/tolaria-vault"
+
+   # When running from GitHub clone
+   export BUILD_SYSTEM_ROOT="/Users/[user]/agents"
+   export TOLARIA_VAULT_PATH="/Users/[user]/tolaria-vault"
+
+   # When running from Mac local copy
+   export BUILD_SYSTEM_ROOT="/opt/agents"
+   export TOLARIA_VAULT_PATH="/Users/[user]/tolaria-vault"
+   ```
 
 **Estimated Effort:** 2 days
 
@@ -254,6 +331,7 @@ Contribute Build System support directly to Tolaria codebase:
 **Deliverable:** React components for Tolaria integration
 
 1. **Build Dashboard Card:**
+
    ```tsx
    // BuildCard.tsx - Shows in Tolaria UI
    interface BuildCardProps {
@@ -267,6 +345,7 @@ Contribute Build System support directly to Tolaria codebase:
    ```
 
 2. **Build Initiation Modal:**
+
    ```tsx
    // StartBuildModal.tsx
    interface StartBuildForm {
@@ -325,24 +404,42 @@ Contribute Build System support directly to Tolaria codebase:
 
 ### File Locations
 
-**Build System writes to:**
-- `/opt/agents/builds/[BUILD_ID]/state.json`
-- `/opt/agents/builds/[BUILD_ID]/docs/`
-- `/opt/agents/builds/[BUILD_ID]/archived/`
+**Architecture:** Location-agnostic - works from USB, Mac, or GitHub clone
 
-**Tolaria reads from (configured path):**
-- `[TOLARIA_VAULT]/builds/[BUILD_ID]/state.json`
-- `[TOLARIA_VAULT]/builds/[BUILD_ID]/docs/`
-- `[TOLARIA_VAULT]/builds/[BUILD_ID]/archived/`
+**Build System runs from:**
+
+- USB: `/Volumes/STORE N GO/agents`
+- Mac: `/opt/agents` or `/Users/[user]/agents`
+- GitHub clone: Any user-selected path
+
+**Build System writes to:**
+
+- `[BUILD_OUTPUT_DIR]/[BUILD_ID]/state.json`
+- `[BUILD_OUTPUT_DIR]/[BUILD_ID]/docs/`
+- `[BUILD_OUTPUT_DIR]/[BUILD_ID]/archived/`
+- Default: `./builds/` relative to BUILD_SYSTEM_ROOT
+
+**Tolaria vault location:**
+
+- Configurable via `TOLARIA_VAULT_PATH` environment variable
+- Auto-detection checks: `~/tolaria-vault`, `~/Documents/tolaria`, `/Volumes/STORE N GO/tolaria-vault`
+
+**Tolaria reads from:**
+
+- `[TOLARIA_VAULT_PATH]/builds/[BUILD_ID]/state.json`
+- `[TOLARIA_VAULT_PATH]/builds/[BUILD_ID]/docs/`
+- `[TOLARIA_VAULT_PATH]/builds/[BUILD_ID]/archived/`
 
 **Sync mechanism:**
-- Option 1: Build system writes directly to Tolaria vault path
-- Option 2: File watcher syncs between paths
-- Option 3: API-based data transfer (no file sharing)
+
+- Option 1: Build system writes directly to Tolaria vault path (RECOMMENDED for USB deployment)
+- Option 2: File watcher syncs between paths (for separate locations)
+- Option 3: API-based data transfer (no file sharing - least preferred)
 
 ### Data Formats
 
 **state.json:**
+
 ```json
 {
   "build_id": "BUILD-2026-05-07-002",
@@ -412,6 +509,30 @@ Contribute Build System support directly to Tolaria codebase:
 3. Should the build system write directly to Tolaria's vault, or use a sync mechanism?
 4. What Tolaria version are you running?
 5. Do you want the build dashboard as a Tolaria panel, separate window, or both?
+6. Should Tolaria vault also be on the USB drive for portability?
+
+## Deployment Scenarios
+
+**Scenario A: USB-Only Deployment (Most Portable)**
+
+- Build system on USB: `/Volumes/STORE N GO/agents`
+- Tolaria vault on USB: `/Volumes/STORE N GO/tolaria-vault`
+- Mac runs both from USB
+- Everything portable, plug-and-play
+
+**Scenario B: Hybrid Deployment**
+
+- Build system on USB: `/Volumes/STORE N GO/agents`
+- Tolaria vault on Mac: `~/tolaria-vault`
+- Build system writes to Mac vault via configured path
+- Good for development, requires configuration
+
+**Scenario C: GitHub Clone Deployment**
+
+- Build system cloned from GitHub to Mac
+- Tolaria vault on Mac
+- Standard development setup
+- Requires git clone and configuration
 
 ---
 
