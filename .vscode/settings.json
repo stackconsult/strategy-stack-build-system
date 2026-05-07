@@ -1,0 +1,21 @@
+{
+  "python.defaultInterpreterPath": "/opt/agents/venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "editor.formatOnSave": true,
+  "editor.rulers": [88],
+  "files.watcherExclude": {
+    "**/venv/**": true,
+    "**/__pycache__/**": true,
+    "**/node_modules/**": true,
+    "**/target/**": true
+  },
+  "rust-analyzer.linkedProjects": ["/opt/tolaria/src-tauri/Cargo.toml"],
+  "terminal.integrated.env.linux": {
+    "VAULT_PATH": "/opt/agents",
+    "PYTHONPATH": "/opt/agents"
+  },
+  "terminal.integrated.env.osx": {
+    "VAULT_PATH": "/opt/agents",
+    "PYTHONPATH": "/opt/agents"
+  }
+}
