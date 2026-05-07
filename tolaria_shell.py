@@ -45,7 +45,11 @@ class TolariaShell:
                         agent = agent_class()
                         agent.db_pool = pool
                         try:
-                            result = await agent.execute(build_id, {})
+                            # Provide context for agents that need it
+                            context = {}
+                            if agent_name == "PO_AGENT_v1":
+                                context = {"prd_path": "/opt/agents/specs/sample_prd.md"}
+                            result = await agent.execute(build_id, context)
                             print(f"✅ {agent_name}: {result['status']}")
                         except Exception as e:
                             print(f"❌ {agent_name}: FAILED - {e}")
@@ -74,8 +78,8 @@ class TolariaShell:
                 print(f"Build ID: {build['build_id']}")
                 print(f"Status: {build['status']}")
                 print(f"Phase: {build['current_phase']}")
-                print(f"Created: {build['created_at']}")
-                if build['completed_at']:
+                print(f"Created: {build.get('created_at', 'N/A')}")
+                if build.get('completed_at'):
                     print(f"Completed: {build['completed_at']}")
                 
                 # Show gates
