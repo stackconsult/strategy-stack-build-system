@@ -27,16 +27,14 @@ This document outlines how the 19-Agent Build System integrates with Tolaria, St
 - Tauri-based desktop app (Rust + React + TypeScript)
 - Markdown vault management
 - Git-first architecture
-- Files-first storage
 - AI agent integration support
 - **Vault Location:** Configurable (Mac, USB, or any path)
 
 **Deployment Architecture:**
 
-- **USB Drive (Store and Go):** Stores all source files
-- **Mac:** Runs the system from USB or local copy
-- **GitHub:** Public repo for anyone to clone and run
-- **Tolaria Vault:** Can be anywhere (Mac, USB, separate drive)
+- **Laptop (Mac):** Primary location - build system and Tolaria vault live here
+- **GitHub:** Cloud backup and download source for anyone to clone
+- **USB Drive:** Optional clone from laptop for portability (not primary)
 
 ---
 
@@ -246,25 +244,25 @@ Contribute Build System support directly to Tolaria codebase:
 
 **Deliverable:** Bidirectional file sync between systems
 
-**Architecture Constraint:**
+**Deployment Model:**
 
-- Build system runs from: USB drive, Mac, or GitHub clone (location-agnostic)
-- Tolaria vault can be: Mac, USB, separate drive (configurable)
-- Integration must work regardless of source/destination locations
+- Primary: Laptop (Mac) - both build system and Tolaria vault live here
+- GitHub: Cloud source for cloning
+- USB: Optional clone from laptop
 
 1. **Configuration (Environment Variables):**
 
    ```bash
    # Build System Config
-   BUILD_SYSTEM_ROOT=/path/to/agents  # Auto-detected if not set
-   TOLARIA_VAULT_PATH=/path/to/tolaria/vault  # Required
-   BUILD_OUTPUT_DIR=/path/to/builds  # Default: ./builds
+   BUILD_SYSTEM_ROOT=/opt/agents  # Default on Mac
+   TOLARIA_VAULT_PATH=~/tolaria-vault  # Default on Mac
+   BUILD_OUTPUT_DIR=./builds  # Default: relative to BUILD_SYSTEM_ROOT
    ```
 
 2. **Tolaria vault structure for builds:**
 
    ```
-   [TOLARIA_VAULT_PATH]/
+   ~/tolaria-vault/
      ├── builds/
      │   ├── [BUILD_ID]/
      │   │   ├── state.json          ← Written by ORCHESTRATOR
@@ -285,19 +283,11 @@ Contribute Build System support directly to Tolaria codebase:
    from pathlib import Path
 
    def get_tolaria_vault_path():
-       """Get Tolaria vault path from env or prompt user"""
+       """Get Tolaria vault path from env or use default"""
        path = os.getenv('TOLARIA_VAULT_PATH')
        if not path:
-           # Check common locations
-           for candidate in [
-               Path.home() / 'tolaria-vault',
-               Path.home() / 'Documents' / 'tolaria',
-               Path.home() / 'vault',
-               '/Volumes/STORE N GO/tolaria-vault',  # USB
-           ]:
-               if candidate.exists():
-                   path = str(candidate)
-                   break
+           # Default to ~/tolaria-vault on Mac
+           path = str(Path.home() / 'tolaria-vault')
        return path
    ```
 
@@ -305,22 +295,6 @@ Contribute Build System support directly to Tolaria codebase:
    - Tolaria watches state.json for changes (via native OS watcher)
    - Build system writes to configured path (no watching needed)
    - Both use absolute paths to avoid confusion
-
-5. **Deployment Configuration:**
-
-   ```bash
-   # When running from USB
-   export BUILD_SYSTEM_ROOT="/Volumes/STORE N GO/agents"
-   export TOLARIA_VAULT_PATH="/Volumes/STORE N GO/tolaria-vault"
-
-   # When running from GitHub clone
-   export BUILD_SYSTEM_ROOT="/Users/[user]/agents"
-   export TOLARIA_VAULT_PATH="/Users/[user]/tolaria-vault"
-
-   # When running from Mac local copy
-   export BUILD_SYSTEM_ROOT="/opt/agents"
-   export TOLARIA_VAULT_PATH="/Users/[user]/tolaria-vault"
-   ```
 
 **Estimated Effort:** 2 days
 
@@ -404,37 +378,23 @@ Contribute Build System support directly to Tolaria codebase:
 
 ### File Locations
 
-**Architecture:** Location-agnostic - works from USB, Mac, or GitHub clone
+**Build System:**
 
-**Build System runs from:**
+- Location: `/opt/agents` on Mac
+- Writes to: `./builds/[BUILD_ID]/`
+- Configurable via `BUILD_SYSTEM_ROOT` env var
 
-- USB: `/Volumes/STORE N GO/agents`
-- Mac: `/opt/agents` or `/Users/[user]/agents`
-- GitHub clone: Any user-selected path
+**Tolaria Vault:**
 
-**Build System writes to:**
+- Location: `~/tolaria-vault` on Mac
+- Reads from: `~/tolaria-vault/builds/[BUILD_ID]/`
+- Configurable via `TOLARIA_VAULT_PATH` env var
 
-- `[BUILD_OUTPUT_DIR]/[BUILD_ID]/state.json`
-- `[BUILD_OUTPUT_DIR]/[BUILD_ID]/docs/`
-- `[BUILD_OUTPUT_DIR]/[BUILD_ID]/archived/`
-- Default: `./builds/` relative to BUILD_SYSTEM_ROOT
+**Integration:**
 
-**Tolaria vault location:**
-
-- Configurable via `TOLARIA_VAULT_PATH` environment variable
-- Auto-detection checks: `~/tolaria-vault`, `~/Documents/tolaria`, `/Volumes/STORE N GO/tolaria-vault`
-
-**Tolaria reads from:**
-
-- `[TOLARIA_VAULT_PATH]/builds/[BUILD_ID]/state.json`
-- `[TOLARIA_VAULT_PATH]/builds/[BUILD_ID]/docs/`
-- `[TOLARIA_VAULT_PATH]/builds/[BUILD_ID]/archived/`
-
-**Sync mechanism:**
-
-- Option 1: Build system writes directly to Tolaria vault path (RECOMMENDED for USB deployment)
-- Option 2: File watcher syncs between paths (for separate locations)
-- Option 3: API-based data transfer (no file sharing - least preferred)
+- Build system writes directly to Tolaria vault path
+- Tolaria watches for file changes
+- Simple, direct file-based integration
 
 ### Data Formats
 
