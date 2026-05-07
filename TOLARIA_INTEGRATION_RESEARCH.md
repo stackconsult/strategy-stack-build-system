@@ -497,3 +497,188 @@ Contribute Build System support directly to Tolaria codebase:
 ---
 
 *Document prepared for StackConsulting 19-Agent Build System integration with Tolaria*
+
+---
+
+## Desktop App Build Plan
+
+### Overview
+
+Build a Tauri desktop application for the 19-Agent Build System that:
+
+- Runs on Mac (primary target)
+- Commits to GitHub repo for codebase updates
+- Can be cloned to USB drive for distribution
+- Provides native desktop UI for build monitoring
+
+### Architecture
+
+**Desktop App Structure:**
+
+```
+/opt/agents/desktop-app/
+├── src-tauri/
+│   ├── src/
+│   │   └── main.rs           # Rust backend
+│   ├── Cargo.toml
+│   └── tauri.conf.json
+├── src/
+│   └── main.tsx              # React frontend
+├── package.json
+└── public/
+```
+
+**Communication Flow:**
+
+```
+Desktop App (Tauri) → HTTP API → Build System (localhost:8081)
+Desktop App (Tauri) → File I/O → Tolaria Vault (~/tolaria-vault)
+Desktop App (Tauri) → Git → GitHub Repo
+```
+
+### Implementation Steps
+
+#### Step 1: Initialize Tauri Project
+
+- Create `/opt/agents/desktop-app/` directory
+- Initialize Tauri project with Rust + React
+- Configure for macOS target only initially
+
+#### Step 2: Rust Backend (Tauri Commands)
+
+Implement Tauri commands:
+
+- `fetch_builds()` - Get builds from API
+- `fetch_build_gates(build_id)` - Get gates for build
+- `fetch_stats()` - Get system statistics
+- `fetch_agents()` - Get all agents
+- `start_build(config)` - Initiate new build via API
+- `pause_build(build_id)` - Pause running build
+- `resume_build(build_id)` - Resume paused build
+
+#### Step 3: React Frontend UI
+
+Create UI components:
+
+- Dashboard with stats cards (total builds, completed, gates)
+- Recent builds list with status indicators
+- Build detail view with gates and events
+- Build initiation modal
+- Agent status panel
+- Real-time updates (poll every 10s)
+
+#### Step 4: Build System API Enhancement
+
+Add missing API endpoints:
+
+- `POST /api/builds/start` - Initiate build
+- `GET /api/builds/:id/status` - Get build status
+- `POST /api/builds/:id/pause` - Pause build
+- `POST /api/builds/:id/resume` - Resume build
+
+#### Step 5: Integration Testing
+
+- Test desktop app with live build system
+- Verify API communication
+- Test build initiation from desktop app
+- Verify real-time updates
+
+#### Step 6: Packaging for macOS
+
+- Build macOS .app bundle
+- Test installation on Mac
+- Verify all features work
+
+#### Step 7: GitHub Integration
+
+- Commit desktop app to GitHub repo
+- Update README with desktop app instructions
+- Include build instructions
+
+#### Step 8: USB Distribution
+
+- Clone repo to USB drive
+- Document USB setup process
+- Test USB-based installation
+
+### Technical Specifications
+
+**Rust Dependencies:**
+
+- tauri 2.x
+- serde/serde_json for serialization
+- tokio for async operations
+- reqwest for HTTP client
+
+**React Dependencies:**
+
+- React 18+
+- TypeScript
+- TailwindCSS for styling
+- React Query for API state management
+
+**API Endpoints to Implement:**
+
+```python
+# Add to /opt/agents/dashboard/server.py
+@app.post("/api/builds/start")
+async def start_build(config: BuildConfig):
+    # Initialize new build
+    pass
+
+@app.get("/api/builds/{build_id}/status")
+async def get_build_status(build_id: str):
+    # Return state.json content
+    pass
+
+@app.post("/api/builds/{build_id}/pause")
+async def pause_build(build_id: str):
+    # Pause build execution
+    pass
+
+@app.post("/api/builds/{build_id}/resume")
+async def resume_build(build_id: str):
+    # Resume paused build
+    pass
+```
+
+### Deployment Workflow
+
+**Development Workflow:**
+
+1. Build desktop app on Mac
+2. Test with local build system
+3. Commit changes to GitHub
+4. Push to update online repo
+
+**Distribution Workflow:**
+
+1. Clone GitHub repo to USB drive
+2. USB contains full source code
+3. User can install from USB or clone from GitHub
+
+### Estimated Timeline
+
+- Step 1: Initialize Tauri - 0.5 days
+- Step 2: Rust Backend - 2 days
+- Step 3: React Frontend - 2 days
+- Step 4: API Enhancement - 1 day
+- Step 5: Integration Testing - 1 day
+- Step 6: macOS Packaging - 0.5 days
+- Step 7: GitHub Integration - 0.5 days
+- Step 8: USB Distribution - 0.5 days
+
+**Total: 8 days**
+
+### Success Criteria
+
+- Desktop app runs natively on Mac
+- Can initiate builds from desktop UI
+- Shows real-time build status
+- Commits to GitHub successfully
+- Can be cloned to USB for distribution
+- All features work without USB connected
+
+---
+
+*Document prepared for StackConsulting 19-Agent Build System integration with Tolaria*
