@@ -4,12 +4,22 @@ Provides real-time build monitoring and status display
 """
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import asyncpg
 import json
 from datetime import datetime
 from pathlib import Path
 
 app = FastAPI(title="Build System Dashboard", version="1.0.0")
+
+# Enable CORS for all origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Database connection
 DB_URL = "postgresql://agents_user:agents_secure_pass_2026@localhost/governance_db"
