@@ -1,33 +1,49 @@
-import sys
-sys.path.insert(0, '/opt/agents')
-
 import asyncio
+import sys
+import time
+sys.path.insert(0, '/opt/agents')
 from agents.be_agent.v2 import BEAgentV2
 
-async def test_agent_identity():
-    agent = BEAgentV2("TEST_BUILD", "/builds/test/repo")
-    assert agent.agent_id == "BE_AGENT_v2"
-    assert agent.phase == 4
-    print("test_agent_identity PASSED")
-
-async def test_idempotency_covers_all_mutating_methods():
-    # Read the agent file to verify idempotency covers POST/PUT/PATCH/DELETE
-    with open("/opt/agents/agents/be_agent/v2.py", 'r') as f:
-        content = f.read()
-    assert "POST" in content
-    assert "PUT" in content
-    assert "PATCH" in content
-    assert "DELETE" in content
-    print("test_idempotency_covers_all_mutating_methods PASSED")
-
-async def test_dlq_in_worker():
-    with open("/opt/agents/agents/be_agent/v2.py", 'r') as f:
-        content = f.read()
-    assert "dlq" in content or "DLQ" in content
-    print("test_dlq_in_worker PASSED")
+async def test():
+    build_id = f"TEST_{int(time.time())}"
+    agent = BEAgentV2()
+    await agent.initialize()
+    
+    # Create test build and G-09
+    async with agent.db_pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO builds (build_id, status, current_phase) VALUES ($1, 'PENDING', 4)",
+            build_id
+        )
+        await conn.execute(
+            """INSERT INTO gates (gate_id, build_id, status, passed_by, evidence, passed_at)
+               VALUES ('G-09', $1, 'PASSED', 'QA_AGENT_v1', '{}'::jsonb, NOW())""",
+            build_id
+        )
+    
+    # Execute agent
+    result = await agent.execute(build_id, {})
+    assert result["status"] == "COMPLETE", "execute failed"
+    print("✅ execute: PASS")
+    
+    # Verify G-10 was emitted
+    async with agent.db_pool.acquire() as conn:
+        gate = await conn.fetchrow("SELECT * FROM gates WHERE build_id = $1 AND gate_id = 'G-10'", build_id)
+    assert gate is not None, "gate G-10 not emitted"
+    print("✅ gate_emitted: PASS")
+    
+    # Verify awaited G-09
+    assert result["awaited_gate"] == "G-09", "did not await G-09"
+    print("✅ awaited_gate: PASS")
+    
+    # Cleanup
+    async with agent.db_pool.acquire() as conn:
+        await conn.execute("DELETE FROM gates WHERE build_id = $1", build_id)
+        await conn.execute("DELETE FROM events WHERE build_id = $1", build_id)
+        await conn.execute("DELETE FROM builds WHERE build_id = $1", build_id)
+    
+    await agent.cleanup()
+    print("\n✅ BE_AGENT_v2 test 4/4 PASS")
 
 if __name__ == "__main__":
-    asyncio.run(test_agent_identity())
-    asyncio.run(test_idempotency_covers_all_mutating_methods())
-    asyncio.run(test_dlq_in_worker())
-    print("\nAll BE_AGENT_v2 tests PASSED")
+    asyncio.run(test())

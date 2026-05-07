@@ -1,0 +1,16 @@
+name: check_skills
+description: "Check that all system skills and dependencies are installed"
+steps:
+  - name: Check Python packages
+    type: python
+    code: |
+      pkgs = ['fastapi','uvicorn','asyncpg','redis','httpx','structlog','pydantic']
+      for p in pkgs:
+          __import__(p)
+      result = f"All {len(pkgs)} packages OK"
+  - name: Check PostgreSQL
+    type: command
+    command: pg_isready
+  - name: Check Redis
+    type: command
+    command: redis-cli ping

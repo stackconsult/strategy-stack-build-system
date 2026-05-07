@@ -1,60 +1,47 @@
+"""
+TL_AGENT_v3 — Technical Lead Agent
+Phase 3: Waits for G-07, emits G-08
+"""
 import sys
 sys.path.insert(0, '/opt/agents')
-
-import asyncio
 from agents.base_agent import BaseAgent
+import asyncio
 
 class TLAgentV3(BaseAgent):
-    def __init__(self, build_id: str):
-        super().__init__("TL_AGENT_v3", build_id, phase=4)
-
-    async def run(self):
-        self.set_step("waiting_phase3_convergence")
-        await self.write_governance_record("TASK_START", step_id="wait_phase3",
-            payload={"waiting_for": ["BE_AGENT_v1", "FE_AGENT_v1", "DO_AGENT_v2"]})
+    """Technical Lead Agent v3 — Phase 3"""
+    
+    def __init__(self):
+        super().__init__("TL_AGENT_v3", "postgresql://agents_user:agents_secure_pass_2026@localhost/governance_db")
+    
+    async def execute(self, build_id: str, context: dict):
+        # Wait for G-07
+        max_wait = 30
+        for i in range(max_wait):
+            async with self.db_pool.acquire() as conn:
+                gate = await conn.fetchrow(
+                    "SELECT * FROM gates WHERE build_id = $1 AND gate_id = 'G-07'",
+                    build_id
+                )
+            if gate and gate['status'] == 'PASSED':
+                break
+            await asyncio.sleep(1)
+        else:
+            raise TimeoutError("G-07 not passed within timeout")
         
-        # Wait for COMPLETION_SIGNAL from BE_AGENT_v1, FE_AGENT_v1, DO_AGENT_v2
-        await self._wait_for_signals()
-        
-        await self.emit_gate_pass("G-18", evidence={
-            "phase3_tracks_complete": ["BE_AGENT_v1", "FE_AGENT_v1", "DO_AGENT_v2"],
-            "integration_gate": "PASSED"
+        # Emit G-08
+        await self.write_gate(build_id, "G-08", "PASSED", {
+            "awaited_gate": "G-07",
+            "status": "confirmed"
         })
         
-        # Dispatch QA_AGENT_v1 + BE_AGENT_v2 + FE_AGENT_v2 in parallel
-        await asyncio.gather(
-            self.emit_handoff("QA_AGENT_v1", payload={"build_id": self.build_id}),
-            self.emit_handoff("BE_AGENT_v2", payload={"build_id": self.build_id}),
-            self.emit_handoff("FE_AGENT_v2", payload={"build_id": self.build_id})
-        )
+        # Log event
+        await self.write_governance_event(build_id, "PHASE_3_COMPLETE", {
+            "gate": "G-07",
+            "next_gate": "G-08"
+        })
         
-        await self.write_governance_record("TASK_COMPLETE", status="COMPLETE",
-            payload={"gates_passed": ["G-18"]})
-        self.status = "COMPLETE"
-        await self.stop()
-
-    async def _wait_for_signals(self, timeout_s: int = 7200):
-        """Wait for all 3 completion signals."""
-        deadline = asyncio.get_event_loop().time() + timeout_s
-        required = {"BE_AGENT_v1", "FE_AGENT_v1", "DO_AGENT_v2"}
-        received = set()
-        
-        while asyncio.get_event_loop().time() < deadline:
-            messages = await self.receive_messages(max_messages=20)
-            for msg in messages:
-                if msg.get("message_type") == "COMPLETION_SIGNAL":
-                    sender = msg.get("from_agent")
-                    if sender in required:
-                        received.add(sender)
-                        await self.write_governance_record("STATUS_UPDATE",
-                            step_id="signal_received",
-                            payload={"from": sender, "remaining": list(required - received)})
-            
-            if required.issubset(received):
-                return
-            
-            await asyncio.sleep(10)
-        
-        missing = required - received
-        await self.emit_blocker_alert(
-            f"Phase 3 convergence timeout. Missing: {missing}", "G-18")
+        return {
+            "status": "COMPLETE",
+            "gate_emitted": "G-08",
+            "awaited_gate": "G-07"
+        }

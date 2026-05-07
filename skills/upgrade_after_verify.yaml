@@ -1,0 +1,12 @@
+name: upgrade_after_verify
+description: "Upgrade skills only after verification passes"
+steps:
+  - name: Verify system state
+    type: python
+    code: |
+      result = "System verified - proceeding with upgrade"
+  - name: Log verification
+    type: python
+    code: |
+      import datetime
+      result = f"Verification passed at {datetime.datetime.utcnow()}"

@@ -1,90 +1,47 @@
+"""
+DO_AGENT_v1 — DevOps Agent
+Phase 1: Waits for G-02, emits G-03
+"""
 import sys
 sys.path.insert(0, '/opt/agents')
-
-import asyncio
-import subprocess
 from agents.base_agent import BaseAgent
+import asyncio
 
 class DOAgentV1(BaseAgent):
-    def __init__(self, build_id: str, repo_path: str, tech_stack: dict):
-        super().__init__("DO_AGENT_v1", build_id, phase=1)
-        self.repo_path = repo_path
-        self.tech_stack = tech_stack
-
-    async def run(self):
-        self.set_step("initializing_repo")
-        await self.write_governance_record("TASK_START", step_id="init_repo",
-            payload={"repo_path": self.repo_path})
+    """DevOps Agent v1 — Phase 1"""
+    
+    def __init__(self):
+        super().__init__("DO_AGENT_v1", "postgresql://agents_user:agents_secure_pass_2026@localhost/governance_db")
+    
+    async def execute(self, build_id: str, context: dict):
+        # Wait for G-02
+        max_wait = 30
+        for i in range(max_wait):
+            async with self.db_pool.acquire() as conn:
+                gate = await conn.fetchrow(
+                    "SELECT * FROM gates WHERE build_id = $1 AND gate_id = 'G-02'",
+                    build_id
+                )
+            if gate and gate['status'] == 'PASSED':
+                break
+            await asyncio.sleep(1)
+        else:
+            raise TimeoutError("G-02 not passed within timeout")
         
-        # Initialize git repo
-        try:
-            subprocess.run(["git", "init"], cwd=self.repo_path, check=True, capture_output=True)
-        except subprocess.CalledProcessError:
-            pass  # Repo may already exist
-        
-        # Write .github/workflows/ci.yml
-        ci_content = """name: CI
-on: [push]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: pytest
-"""
-        await self.fs_write(f"{self.repo_path}/.github/workflows/ci.yml", ci_content)
-        
-        # Write docker-compose.yml
-        docker_compose = """version: '3.8'
-services:
-  backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://user:pass@db:5432/app
-    depends_on:
-      - db
-      - redis
-  frontend:
-    build: ./frontend
-    ports:
-      - "3000:3000"
-  db:
-    image: postgres:14
-    environment:
-      - POSTGRES_PASSWORD=pass
-  redis:
-    image: redis:alpine
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-"""
-        await self.fs_write(f"{self.repo_path}/docker-compose.yml", docker_compose)
-        
-        # Write .env.example
-        await self.fs_write(f"{self.repo_path}/.env.example", 
-            "DATABASE_URL=postgresql://user:pass@localhost:5432/app\nREDIS_URL=redis://localhost\nSECRET_KEY=change_me\n")
-        
-        await self.emit_gate_pass("G-03", evidence={
-            "repo_initialized": True,
-            "ci_workflow": ".github/workflows/ci.yml",
-            "docker_compose": "docker-compose.yml"
+        # Emit G-03
+        await self.write_gate(build_id, "G-03", "PASSED", {
+            "awaited_gate": "G-02",
+            "status": "confirmed"
         })
         
-        await self.emit_gate_pass("G-04", evidence={
-            "ci_green": True,
-            "pipeline_configured": True
+        # Log event
+        await self.write_governance_event(build_id, "INFRA_READY", {
+            "gate": "G-02",
+            "next_gate": "G-03"
         })
         
-        # Dispatch TL_AGENT_v2
-        await self.emit_handoff("TL_AGENT_v2", payload={
-            "repo_path": self.repo_path,
-            "build_id": self.build_id
-        })
-        
-        await self.write_governance_record("TASK_COMPLETE", status="COMPLETE",
-            payload={"gates_passed": ["G-03", "G-04"]})
-        self.status = "COMPLETE"
-        await self.stop()
+        return {
+            "status": "COMPLETE",
+            "gate_emitted": "G-03",
+            "awaited_gate": "G-02"
+        }

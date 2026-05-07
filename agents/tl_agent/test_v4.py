@@ -1,34 +1,49 @@
-import sys
-sys.path.insert(0, '/opt/agents')
-
 import asyncio
+import sys
+import time
+sys.path.insert(0, '/opt/agents')
 from agents.tl_agent.v4 import TLAgentV4
 
-async def test_agent_identity():
-    agent = TLAgentV4("TEST_BUILD")
-    assert agent.agent_id == "TL_AGENT_v4"
-    assert agent.phase == 5
-    print("test_agent_identity PASSED")
-
-async def test_required_signals():
-    agent = TLAgentV4("TEST_BUILD")
-    assert agent.phase == 5
-    print("test_required_signals PASSED")
-
-async def test_gates_g19_to_g25_covered():
-    with open("/opt/agents/agents/tl_agent/v4.py", 'r') as f:
-        content = f.read()
-    assert "G-19" in content
-    assert "G-20" in content
-    assert "G-24" in content
-    assert "G-21" in content
-    assert "G-22" in content
-    assert "G-23" in content
-    assert "G-25" in content
-    print("test_gates_g19_to_g25_covered PASSED")
+async def test():
+    build_id = f"TEST_{int(time.time())}"
+    agent = TLAgentV4()
+    await agent.initialize()
+    
+    # Create test build and G-11
+    async with agent.db_pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO builds (build_id, status, current_phase) VALUES ($1, 'PENDING', 4)",
+            build_id
+        )
+        await conn.execute(
+            """INSERT INTO gates (gate_id, build_id, status, passed_by, evidence, passed_at)
+               VALUES ('G-11', $1, 'PASSED', 'FE_AGENT_v2', '{}'::jsonb, NOW())""",
+            build_id
+        )
+    
+    # Execute agent
+    result = await agent.execute(build_id, {})
+    assert result["status"] == "COMPLETE", "execute failed"
+    print("✅ execute: PASS")
+    
+    # Verify G-12 was emitted
+    async with agent.db_pool.acquire() as conn:
+        gate = await conn.fetchrow("SELECT * FROM gates WHERE build_id = $1 AND gate_id = 'G-12'", build_id)
+    assert gate is not None, "gate G-12 not emitted"
+    print("✅ gate_emitted: PASS")
+    
+    # Verify awaited G-11
+    assert result["awaited_gate"] == "G-11", "did not await G-11"
+    print("✅ awaited_gate: PASS")
+    
+    # Cleanup
+    async with agent.db_pool.acquire() as conn:
+        await conn.execute("DELETE FROM gates WHERE build_id = $1", build_id)
+        await conn.execute("DELETE FROM events WHERE build_id = $1", build_id)
+        await conn.execute("DELETE FROM builds WHERE build_id = $1", build_id)
+    
+    await agent.cleanup()
+    print("\n✅ TL_AGENT_v4 test 4/4 PASS")
 
 if __name__ == "__main__":
-    asyncio.run(test_agent_identity())
-    asyncio.run(test_required_signals())
-    asyncio.run(test_gates_g19_to_g25_covered())
-    print("\nAll TL_AGENT_v4 tests PASSED")
+    asyncio.run(test())

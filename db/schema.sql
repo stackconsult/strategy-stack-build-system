@@ -1,80 +1,70 @@
--- StackConsulting 19-Agent Build System - Governance Database Schema
+-- governance_db schema — all tables use IF NOT EXISTS
+-- Safe to run multiple times
 
--- Builds table
 CREATE TABLE IF NOT EXISTS builds (
-    build_id VARCHAR(255) PRIMARY KEY,
-    status VARCHAR(50) NOT NULL DEFAULT 'INIT',
-    current_phase INTEGER DEFAULT 1,
-    prd_path TEXT,
-    structured_spec JSONB,
-    started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    completed_at TIMESTAMP WITH TIME ZONE,
-    metadata JSONB
+    id           SERIAL PRIMARY KEY,
+    build_id     VARCHAR(128) UNIQUE NOT NULL,
+    status       VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
+    current_phase INTEGER      NOT NULL DEFAULT 1,
+    prd_path     TEXT,
+    spec_path    TEXT,
+    started_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    metadata     JSONB        NOT NULL DEFAULT '{}'
 );
 
--- Events table (governance records)
 CREATE TABLE IF NOT EXISTS events (
-    event_id VARCHAR(255) PRIMARY KEY,
-    build_id VARCHAR(255) NOT NULL REFERENCES builds(build_id),
-    agent_id VARCHAR(100) NOT NULL,
-    event_type VARCHAR(100) NOT NULL,
-    payload JSONB,
-    timestamp_utc TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    id         SERIAL PRIMARY KEY,
+    build_id   VARCHAR(128) NOT NULL,
+    agent_id   VARCHAR(64)  NOT NULL,
+    event_type VARCHAR(64)  NOT NULL,
+    step_id    VARCHAR(64),
+    payload    JSONB        NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
--- Gates table
 CREATE TABLE IF NOT EXISTS gates (
-    gate_id VARCHAR(50) NOT NULL,
-    build_id VARCHAR(255) NOT NULL REFERENCES builds(build_id),
-    status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
-    evidence JSONB,
-    passed_at TIMESTAMP WITH TIME ZONE,
-    passed_by VARCHAR(100),
-    PRIMARY KEY (gate_id, build_id)
+    id         SERIAL PRIMARY KEY,
+    build_id   VARCHAR(128) NOT NULL,
+    gate_id    VARCHAR(32)  NOT NULL,
+    status     VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
+    passed_by  VARCHAR(64),
+    evidence   JSONB        NOT NULL DEFAULT '{}',
+    passed_at  TIMESTAMPTZ,
+    UNIQUE (build_id, gate_id)
 );
 
--- Blockers table
 CREATE TABLE IF NOT EXISTS blockers (
-    blocker_id VARCHAR(255) PRIMARY KEY,
-    build_id VARCHAR(255) NOT NULL REFERENCES builds(build_id),
-    gate_id VARCHAR(50),
-    message TEXT NOT NULL,
-    raised_by VARCHAR(100) NOT NULL,
-    raised_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    resolved BOOLEAN DEFAULT FALSE,
-    resolved_at TIMESTAMP WITH TIME ZONE
+    id         SERIAL PRIMARY KEY,
+    build_id   VARCHAR(128) NOT NULL,
+    agent_id   VARCHAR(64)  NOT NULL,
+    gate_id    VARCHAR(32),
+    message    TEXT         NOT NULL,
+    resolved   BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
--- Agent heartbeats table
-CREATE TABLE IF NOT EXISTS agent_heartbeats (
-    agent_id VARCHAR(100),
-    build_id VARCHAR(255) NOT NULL REFERENCES builds(build_id),
-    status VARCHAR(50),
-    current_step TEXT,
-    last_heartbeat TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    PRIMARY KEY (agent_id, build_id)
-);
-
--- Messages table (agent-to-agent communication)
 CREATE TABLE IF NOT EXISTS messages (
-    message_id VARCHAR(255) PRIMARY KEY,
-    from_agent VARCHAR(100) NOT NULL,
-    to_agent VARCHAR(100) NOT NULL,
-    message_type VARCHAR(100) NOT NULL,
-    build_id VARCHAR(255) NOT NULL REFERENCES builds(build_id),
-    payload JSONB,
-    timestamp_utc TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    processed BOOLEAN DEFAULT FALSE
+    id          SERIAL PRIMARY KEY,
+    build_id    VARCHAR(128) NOT NULL,
+    from_agent  VARCHAR(64)  NOT NULL,
+    to_agent    VARCHAR(64)  NOT NULL,
+    message_type VARCHAR(64) NOT NULL,
+    payload     JSONB        NOT NULL DEFAULT '{}',
+    read        BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS agent_heartbeats (
+    id         SERIAL PRIMARY KEY,
+    build_id   VARCHAR(128) NOT NULL,
+    agent_id   VARCHAR(64)  NOT NULL,
+    status     VARCHAR(32)  NOT NULL,
+    last_seen  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_events_build_id ON events(build_id);
-CREATE INDEX IF NOT EXISTS idx_events_agent_id ON events(agent_id);
-CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp_utc);
 CREATE INDEX IF NOT EXISTS idx_gates_build_id ON gates(build_id);
-CREATE INDEX IF NOT EXISTS idx_gates_status ON gates(status);
 CREATE INDEX IF NOT EXISTS idx_blockers_build_id ON blockers(build_id);
-CREATE INDEX IF NOT EXISTS idx_blockers_resolved ON blockers(resolved);
-CREATE INDEX IF NOT EXISTS idx_messages_to_agent ON messages(to_agent);
-CREATE INDEX IF NOT EXISTS idx_messages_build_id ON messages(build_id);
-CREATE INDEX IF NOT EXISTS idx_messages_processed ON messages(processed);
+CREATE INDEX IF NOT EXISTS idx_messages_to_agent ON messages(to_agent, build_id);

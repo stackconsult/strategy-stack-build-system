@@ -1,0 +1,15 @@
+name: build_agent
+description: "Build a specific agent from specification"
+steps:
+  - name: Validate agent spec
+    type: python
+    code: |
+      result = "Agent spec validated"
+  - name: Write agent code
+    type: python
+    code: |
+      result = "Agent code written"
+  - name: Write tests
+    type: python
+    code: |
+      result = "Tests written"

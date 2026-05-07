@@ -25,9 +25,9 @@ tags: [roadmap, checklist, cascade, master]
 - [x] CHUNK-01: Workspace settings configured
 
 ## PART 2 — ROADMAP + STRUCTURE
-- [ ] CHUNK-02: ROADMAP_CHECKLIST.md written (this file)
-- [ ] CHUNK-02: BRANCH_MAP.md written
-- [ ] CHUNK-02: Directory structure created
+- [x] CHUNK-02: ROADMAP_CHECKLIST.md written (this file)
+- [x] CHUNK-02: BRANCH_MAP.md written
+- [x] CHUNK-02: Directory structure created
 - [ ] CHUNK-02: Git repo initialised + committed
 
 ## PART 3 — INFRASTRUCTURE (SWE-AGT-01)

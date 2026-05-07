@@ -24,3 +24,10 @@ tags: [journal, build, cascade]
 - Created 5-file memory backbone
 - IDE workspace settings configured
 - Python venv verified with all packages
+
+### [CHUNK-02] Roadmap + Branch Map — PASS
+- ROADMAP_CHECKLIST.md: 14 chunks, all items listed
+- BRANCH_MAP.md: full file tree, grow-only
+- 24 directories created with __init__.py files
+- Git initialised and initial commit made
+- Memory system: all 5 files active

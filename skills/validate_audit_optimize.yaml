@@ -1,0 +1,22 @@
+name: validate_audit_optimize
+description: "Validate, analyze, audit, and optimize the build system"
+steps:
+  - name: Validate file structure
+    type: python
+    code: |
+      from pathlib import Path
+      VAULT = Path("/opt/agents")
+      required = ["agents", "mcp_servers", "orchestrator", "workflows"]
+      missing = [d for d in required if not (VAULT / d).exists()]
+      result = "PASS" if not missing else f"FAIL: missing {missing}"
+  - name: Check MCP servers via port check
+    type: python
+    code: |
+      import socket
+      sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      sock.settimeout(2)
+      result = "PASS" if sock.connect_ex(('localhost', 8008)) == 0 else "FAIL"
+      sock.close()
+  - name: Audit database tables via psql
+    type: command
+    command: psql -U agents_user -d governance_db -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'"

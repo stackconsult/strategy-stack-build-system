@@ -1,22 +1,49 @@
-import sys
-sys.path.insert(0, '/opt/agents')
-
 import asyncio
+import sys
+import time
+sys.path.insert(0, '/opt/agents')
 from agents.tl_agent.v2 import TLAgentV2
 
-async def test_agent_identity():
-    agent = TLAgentV2("TEST_BUILD", {"project_name": "Test"}, "/builds/test/repo")
-    assert agent.agent_id == "TL_AGENT_v2"
-    assert agent.phase == 2
-    print("test_agent_identity PASSED")
-
-async def test_api_spec_generation():
-    agent = TLAgentV2("TEST_BUILD", {"project_name": "TestAPI"}, "/builds/test/repo")
-    assert agent.structured_spec["project_name"] == "TestAPI"
-    assert agent.repo_path == "/builds/test/repo"
-    print("test_api_spec_generation PASSED")
+async def test():
+    build_id = f"TEST_{int(time.time())}"
+    agent = TLAgentV2()
+    await agent.initialize()
+    
+    # Create test build and G-03
+    async with agent.db_pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO builds (build_id, status, current_phase) VALUES ($1, 'PENDING', 2)",
+            build_id
+        )
+        await conn.execute(
+            """INSERT INTO gates (gate_id, build_id, status, passed_by, evidence, passed_at)
+               VALUES ('G-03', $1, 'PASSED', 'DO_AGENT_v1', '{}'::jsonb, NOW())""",
+            build_id
+        )
+    
+    # Execute agent
+    result = await agent.execute(build_id, {})
+    assert result["status"] == "COMPLETE", "execute failed"
+    print("✅ execute: PASS")
+    
+    # Verify G-04 was emitted
+    async with agent.db_pool.acquire() as conn:
+        gate = await conn.fetchrow("SELECT * FROM gates WHERE build_id = $1 AND gate_id = 'G-04'", build_id)
+    assert gate is not None, "gate G-04 not emitted"
+    print("✅ gate_emitted: PASS")
+    
+    # Verify awaited G-03
+    assert result["awaited_gate"] == "G-03", "did not await G-03"
+    print("✅ awaited_gate: PASS")
+    
+    # Cleanup
+    async with agent.db_pool.acquire() as conn:
+        await conn.execute("DELETE FROM gates WHERE build_id = $1", build_id)
+        await conn.execute("DELETE FROM events WHERE build_id = $1", build_id)
+        await conn.execute("DELETE FROM builds WHERE build_id = $1", build_id)
+    
+    await agent.cleanup()
+    print("\n✅ TL_AGENT_v2 test 4/4 PASS")
 
 if __name__ == "__main__":
-    asyncio.run(test_agent_identity())
-    asyncio.run(test_api_spec_generation())
-    print("\nAll TL_AGENT_v2 tests PASSED")
+    asyncio.run(test())

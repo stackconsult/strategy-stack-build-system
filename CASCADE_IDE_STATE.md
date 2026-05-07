@@ -12,3 +12,4 @@ tags: [ide, windsurf, cascade, extensions]
 [EXTENSION|TOOL|CONFIG] name | version | path_or_port | status
 
 ## State
+[IDE] MCP config written to ~/.windsurf/mcp_config.json — Thu May  7 15:21:22 UTC 2026
