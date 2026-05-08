@@ -1,5 +1,6 @@
 import sys
-sys.path.insert(0, '/opt/agents')
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import asyncio
 import asyncpg
@@ -26,12 +27,30 @@ class BuildStartRequest(BaseModel):
 @app.on_event("startup")
 async def startup():
     global pg_pool, redis_client
-    pg_pool = await asyncpg.create_pool(
-        user="agents_user",
-        password="agents_secure_pass_2026",
-        database="governance_db",
-        host="localhost"
-    )
+    try:
+        # Try cloud PostgreSQL first
+        pg_pool = await asyncpg.create_pool(
+            user="postgres",
+            password="agents_secure_pass_2026",
+            database="postgres",
+            host="db.asaajoefhifdqhprowek.supabase.co",
+            port=5432
+        )
+        log.info("connected_to_cloud_postgresql")
+    except Exception as e:
+        log.warning("cloud_postgresql_failed", error=str(e))
+        # Fallback to local PostgreSQL
+        try:
+            pg_pool = await asyncpg.create_pool(
+                user="agents_user",
+                password="agents_secure_pass_2026",
+                database="governance_db",
+                host="localhost"
+            )
+            log.info("connected_to_local_postgresql")
+        except Exception as local_error:
+            log.error("postgresql_connection_failed", cloud_error=str(e), local_error=str(local_error))
+            raise
     redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
     log.info("orchestrator_started")
 
@@ -132,7 +151,8 @@ async def run_build_process(build_id: str, prd_path: str):
     from agents.tl_agent.v6 import TLAgentV6
     
     # Initialize agents
-    repo_path = f"/builds/{build_id}"
+    workspace_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    repo_path = f"{workspace_dir}/builds/{build_id}"
     
     # Phase 1: PO + TL + DO
     po_v1 = POAgentV1(build_id, prd_path)

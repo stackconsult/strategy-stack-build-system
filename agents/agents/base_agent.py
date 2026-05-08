@@ -1,9 +1,8 @@
 import sys
-sys.path.insert(0, '/opt/agents')
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import asyncio
-import asyncpg
-import redis
 import json
 import structlog
 from datetime import datetime
@@ -23,19 +22,51 @@ class BaseAgent:
         self.redis_client = None
         self.heartbeat_task = None
         self.running = False
+        self.supabase_project_id = None  # Will be set from environment
+        self.supabase_url = None
 
     async def initialize(self):
         """Initialize database connections and start heartbeat."""
-        self.pg_pool = await asyncpg.create_pool(
-            user="agents_user",
-            password="agents_secure_pass_2026",
-            database="governance_db",
-            host="localhost"
-        )
-        self.redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
-        self.running = True
-        self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-        log.info("agent_initialized", agent_id=self.agent_id, build_id=self.build_id)
+        # Try Supabase MCP first, fallback to direct connections
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+            
+            # Try to get Supabase project ID from environment
+            self.supabase_project_id = os.getenv('SUPABASE_PROJECT_REF')
+            self.supabase_url = f"https://{self.supabase_project_id}.supabase.co" if self.supabase_project_id else None
+            
+            # Try Supabase MCP connection
+            # For now, fallback to direct PostgreSQL with Supabase connection string
+            database_url = os.getenv('DATABASE_URL')
+            if database_url:
+                import asyncpg
+                # Parse connection string or use direct parameters
+                self.pg_pool = await asyncpg.create_pool(
+                    user="postgres",
+                    password=os.getenv('SUPABASE_DB_PASSWORD', 'agents_secure_pass_2026'),
+                    database="postgres",
+                    host=f"db.{os.getenv('SUPABASE_PROJECT_REF', 'localhost')}.supabase.co" if os.getenv('SUPABASE_PROJECT_REF') else "localhost",
+                    port=5432
+                )
+            else:
+                # Fallback to local PostgreSQL
+                import asyncpg
+                self.pg_pool = await asyncpg.create_pool(
+                    user="agents_user",
+                    password="agents_secure_pass_2026",
+                    database="governance_db",
+                    host="localhost"
+                )
+            
+            import redis
+            self.redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+            self.running = True
+            self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            log.info("agent_initialized", agent_id=self.agent_id, build_id=self.build_id, using_supabase=bool(database_url))
+        except Exception as e:
+            log.error("initialization_failed", error=str(e))
+            raise
 
     async def _heartbeat_loop(self):
         """Send heartbeat every 30 seconds."""
